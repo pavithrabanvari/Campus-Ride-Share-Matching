@@ -36,4 +36,84 @@ router.post('/requests', verifyToken, async (req, res) => {
   }
 });
 
+
+/**
+ * Search active ride offers near a given location.
+ * GET /api/rides/search?lat=12.9716&lng=77.5946&radiusKm=5
+ */
+router.get('/search', async (req, res) => {
+  try {
+    const { lat: latParam, lng: lngParam, radiusKm: radiusParam } = req.query;
+
+    // Validate required coordinates.
+    if (
+      latParam === undefined ||
+      lngParam === undefined ||
+      latParam.trim() === '' ||
+      lngParam.trim() === ''
+    ) {
+      return res.status(400).json({
+        error: 'Latitude (lat) and longitude (lng) are required.'
+      });
+    }
+
+    const lat = Number(latParam);
+    const lng = Number(lngParam);
+    const radiusKm = radiusParam === undefined ? 5 : Number(radiusParam);
+
+    if (
+      !Number.isFinite(lat) ||
+      lat < -90 ||
+      lat > 90 ||
+      !Number.isFinite(lng) ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return res.status(400).json({
+        error: 'Provide valid latitude (-90 to 90) and longitude (-180 to 180).'
+      });
+    }
+
+    if (
+      radiusParam !== undefined &&
+      (radiusParam.trim() === '' || !Number.isFinite(radiusKm))
+    ) {
+      return res.status(400).json({
+        error: 'radiusKm must be a valid number.'
+      });
+    }
+
+    if (radiusKm <= 0 || radiusKm > 100) {
+      return res.status(400).json({
+        error: 'radiusKm must be greater than 0 and at most 100.'
+      });
+    }
+
+    const rides = await RideOffer.find({
+      status: 'ACTIVE',
+      originLocation: {
+        $near: {
+          $geometry: {
+            type: 'Point',
+            coordinates: [lng, lat]
+          },
+          $maxDistance: radiusKm * 1000
+        }
+      }
+    }).limit(50);
+
+    return res.status(200).json({
+      count: rides.length,
+      radiusKm,
+      rides
+    });
+  } catch (err) {
+    console.error('Ride search failed:', err);
+
+    return res.status(500).json({
+      error: 'Unable to search for rides.'
+    });
+  }
+});
+
 module.exports = router;
