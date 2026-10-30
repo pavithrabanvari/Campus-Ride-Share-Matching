@@ -1,4 +1,19 @@
 from matching_engine.scorer import rank_matches
+from fastapi.testclient import TestClient
+from main import app
+
+client = TestClient(app)
+
+def test_matching_endpoint_success():
+    payload = {
+        "request": {"pickup_lat": 12.9716, "pickup_lng": 77.5946, "seats_needed": 1},
+        "offers": [
+            {"id": "offer_1", "driver_lat": 12.9720, "driver_lng": 77.5950, "available_seats": 2, "status": "ACTIVE"}
+        ]
+    }
+    response = client.post("/api/matches/rank", json=payload)
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
 
 def test_matching_ranking():
     request = {
