@@ -1,34 +1,19 @@
 class MessagingSubsystem:
+    def __init__(self):
+        self.messages = []
 
-  def __init__(self):
-    # Store conversations in memory (dictionary mapping conversation_id to details)
-    self.conversations = {}
+    def send_message(self, sender_id: str, recipient_id: str, content: str):
+        msg = {
+            "sender_id": sender_id,
+            "recipient_id": recipient_id,
+            "content": content
+        }
+        self.messages.append(msg)
+        return msg
 
-  def create_conversation(self, conversation_id, ride_id, driver_id, rider_id):
-    """Creates a new conversation thread between a driver and a rider for a specific ride."""
-    if conversation_id not in self.conversations:
-      self.conversations[conversation_id] = {
-          "ride_id": ride_id,
-          "driver_id": driver_id,
-          "rider_id": rider_id,
-          "messages": [],
-      }
-    return self.conversations[conversation_id]
+    def get_messages_for_user(self, user_id: str):
+        return [m for m in self.messages if m["recipient_id"] == user_id or m["sender_id"] == user_id]
 
-  def send_message(self, conversation_id, sender_id, content):
-    """Sends a message within an existing conversation thread."""
-    if conversation_id not in self.conversations:
-      raise ValueError("Conversation does not exist.")
-
-    if not content.strip():
-      raise ValueError("Message content cannot be empty.")
-
-    message = {"sender_id": sender_id, "content": content}
-    self.conversations[conversation_id]["messages"].append(message)
-    return message
-
-  def get_messages(self, conversation_id):
-    """Retrieves all messages for a specific conversation thread."""
-    if conversation_id not in self.conversations:
-      return []
-    return self.conversations[conversation_id]["messages"]
+    def send_match_notification(self, user_id: str, match_details: dict):
+        content = f"Match found! You have been paired for ride {match_details.get('ride_id', 'N/A')}."
+        return self.send_message(sender_id="SYSTEM", recipient_id=user_id, content=content)
