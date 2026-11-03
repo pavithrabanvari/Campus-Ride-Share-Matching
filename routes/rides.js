@@ -105,28 +105,32 @@ router.get('/search', monitorSearchResponseTime, async (req, res) => {
 
     const originLat = Number(originLatParam);
     const originLng = Number(originLngParam);
-    const filter = {
-      status: 'ACTIVE',
-      originLocation: {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [originLng, originLat]
-          },
-          $maxDistance: radiusKm * 1000
-        }
-      }
-    };
-    if (hasDestination) {
-      filter.destinationLocation = {
-        $geoWithin: {
-          $centerSphere: [[Number(destinationLngParam), Number(destinationLatParam)], radiusKm / 6371]
-        }
-      };
-    }
+    const filter = { status: 'ACTIVE' };
     if (hasDepartureStart) filter.departureTime = { $gte: departureFrom, $lte: departureTo };
+    const pipeline = [{
+      $geoNear: {
+        near: { type: 'Point', coordinates: [originLng, originLat] },
+        key: 'originLocation',
+        distanceField: 'distanceMeters',
+        maxDistance: radiusKm * 1000,
+        spherical: true,
+        query: filter
+      }
+    }];
+    if (hasDestination) {
+      pipeline.push({
+        $match: {
+          destinationLocation: {
+            $geoWithin: {
+              $centerSphere: [[Number(destinationLngParam), Number(destinationLatParam)], radiusKm / 6371]
+            }
+          }
+        }
+      });
+    }
+    pipeline.push({ $limit: 50 });
 
-    const rides = await RideOffer.find(filter).limit(50).lean();
+    const rides = await RideOffer.aggregate(pipeline);
     // Tanishkaa's rank_matches input contract: request + offers. Time values are
     // absolute UTC minutes so differences remain correct across date boundaries.
     const desiredTime = q.desiredTime ? new Date(q.desiredTime) :
