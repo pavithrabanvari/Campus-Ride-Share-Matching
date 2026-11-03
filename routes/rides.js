@@ -75,8 +75,11 @@ router.get('/search', monitorSearchResponseTime, async (req, res) => {
     const radiusParam = q.radiusKm;
     const radiusKm = radiusParam === undefined ? 5 : Number(radiusParam);
 
-    const coordinate = (value, min, max) => value !== undefined && value !== '' &&
-      Number.isFinite(Number(value)) && Number(value) >= min && Number(value) <= max;
+    const coordinate = (value, min, max) => {
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      return normalized !== undefined && normalized !== '' &&
+        Number.isFinite(Number(normalized)) && Number(normalized) >= min && Number(normalized) <= max;
+    };
     if (!coordinate(originLatParam, -90, 90) || !coordinate(originLngParam, -180, 180)) {
       return res.status(400).json({ error: 'Provide valid originLat/originLng (or lat/lng) coordinates.' });
     }

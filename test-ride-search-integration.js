@@ -3,6 +3,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const net = require('node:net');
 const mongoose = require('mongoose');
 const { RideOffer, RideRequest } = require('./models/Ride');
+const campusRoute = require('./test-data/campus-routes.json').routes[0];
 
 const TEST_DB = 'campus-ride-share-geospatial-integration-test';
 const MONGO_URI = `mongodb://127.0.0.1:27017/${TEST_DB}`;
@@ -79,8 +80,12 @@ async function main() {
     const riderAuth = await createAccount('Geospatial Rider');
 
     const desiredTime = new Date(Date.now() + 2 * 60 * 60 * 1000);
-    const origin = { lat: 12.9716, lng: 77.5946 };
-    const destination = { lat: 12.8399, lng: 77.6770 };
+    const origin = { lat: campusRoute.origin.lat, lng: campusRoute.origin.lng };
+    const destination = { lat: campusRoute.destination.lat, lng: campusRoute.destination.lng };
+    const nearRadiusBoundary = {
+      lat: campusRoute.nearRadiusBoundary.lat,
+      lng: campusRoute.nearRadiusBoundary.lng
+    };
     const departureFrom = new Date(desiredTime.getTime() - 10 * 60 * 1000);
     const departureTo = new Date(desiredTime.getTime() + 10 * 60 * 1000);
 
@@ -93,6 +98,16 @@ async function main() {
       })
     });
     assert.equal(invalidCoordinate.status, 400, 'Out-of-range coordinate should be rejected');
+
+    const nullCoordinate = await api('/api/rides/offers', {
+      method: 'POST', headers: driverAuth,
+      body: JSON.stringify({
+        originAddress: 'Null coordinates', originCoordinates: { lat: null, lng: null },
+        destinationAddress: 'Destination', destinationCoordinates: destination,
+        departureTime: desiredTime, availableSeats: 1
+      })
+    });
+    assert.equal(nullCoordinate.status, 400, 'Null offer coordinates should be rejected');
 
     const offer = await api('/api/rides/offers', {
       method: 'POST', headers: driverAuth,
@@ -109,7 +124,7 @@ async function main() {
     const boundaryOffer = await api('/api/rides/offers', {
       method: 'POST', headers: driverAuth,
       body: JSON.stringify({
-        originAddress: 'Near radius boundary', originCoordinates: { lat: origin.lat + 0.0089, lng: origin.lng },
+        originAddress: 'Near radius boundary', originCoordinates: nearRadiusBoundary,
         destinationAddress: 'Electronic City', destinationCoordinates: destination,
         departureTime: desiredTime, availableSeats: 1
       })
@@ -156,10 +171,20 @@ async function main() {
 
     const invalidSearches = [
       '/api/rides/search?originLat=91&originLng=77.5',
+      '/api/rides/search?originLat=null&originLng=77.5',
+      '/api/rides/search?originLat=%20&originLng=77.5',
+      '/api/rides/search?originLat=12&originLng=',
+      '/api/rides/search?originLat=12&originLng=77&destinationLat=null&destinationLng=77',
       '/api/rides/search?originLat=12&originLng=77&departureFrom=2030-01-01T00:00:00Z',
-      '/api/rides/search?originLat=12&originLng=77&radiusKm=0'
+      '/api/rides/search?originLat=12&originLng=77&radiusKm=0',
+      '/api/rides/search?originLat=12&originLng=77&radiusKm=100.0001',
+      '/api/rides/search?originLat=12&originLng=77&radiusKm=1e309'
     ];
     for (const path of invalidSearches) assert.equal((await api(path)).status, 400);
+
+    const emptySearch = await api('/api/rides/search?originLat=0&originLng=0&radiusKm=0.01');
+    assert.equal(emptySearch.status, 200);
+    assert.equal(emptySearch.body.count, 0, 'A valid search with no matching offers should return an empty result set');
 
     const params = new URLSearchParams({
       originLat: String(request.body.originCoordinates.lat),
@@ -229,6 +254,8 @@ async function main() {
         authenticatedOfferPost: 'PASS',
         authenticatedRequestPost: 'PASS',
         coordinateValidation: 'PASS',
+        nullAndExtremeInputHandling: 'PASS',
+        emptyResults: 'PASS',
         originDestinationDepartureFiltering: 'PASS',
         rankerPayloadAndScoring: 'PASS',
         radiusBoundary: 'PASS',
