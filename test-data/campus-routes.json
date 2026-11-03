@@ -1,0 +1,24 @@
+{
+  "datasetType": "synthetic-test-fixtures",
+  "description": "Deterministic geospatial integration-test coordinates; not a production campus-route seed catalog.",
+  "routes": [
+    {
+      "name": "PES Main Gate to Electronic City",
+      "origin": {
+        "name": "PES Main Gate",
+        "lat": 12.9716,
+        "lng": 77.5946
+      },
+      "destination": {
+        "name": "Electronic City",
+        "lat": 12.8399,
+        "lng": 77.677
+      },
+      "nearRadiusBoundary": {
+        "name": "Near-radius boundary",
+        "lat": 12.9805,
+        "lng": 77.5946
+      }
+    }
+  ]
+}
