@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test-ride-geospatial.js && node test-ride-search-integration.js",
+    "test:geospatial": "node test-ride-search-integration.js"
   },
   "repository": {
     "type": "git",

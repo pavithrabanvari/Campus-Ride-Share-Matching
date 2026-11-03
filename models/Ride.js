@@ -40,8 +40,8 @@ const rideOfferSchema = new mongoose.Schema({
   },
   originAddress: { type: String, required: true, trim: true },
   originCoordinates: {
-    lat: { type: Number, min: -90, max: 90 },
-    lng: { type: Number, min: -180, max: 180 }
+    lat: { type: Number, required: true, min: -90, max: 90 },
+    lng: { type: Number, required: true, min: -180, max: 180 }
   },
   destinationAddress: {
     type: String,
@@ -49,8 +49,8 @@ const rideOfferSchema = new mongoose.Schema({
     trim: true
   },
   destinationCoordinates: {
-    lat: { type: Number, min: -90, max: 90 },
-    lng: { type: Number, min: -180, max: 180 }
+    lat: { type: Number, required: true, min: -90, max: 90 },
+    lng: { type: Number, required: true, min: -180, max: 180 }
   },
 
   // New GeoJSON fields
@@ -74,8 +74,8 @@ const rideRequestSchema = new mongoose.Schema({
   },
   originAddress: { type: String, required: true, trim: true },
   originCoordinates: {
-    lat: { type: Number, min: -90, max: 90 },
-    lng: { type: Number, min: -180, max: 180 }
+    lat: { type: Number, required: true, min: -90, max: 90 },
+    lng: { type: Number, required: true, min: -180, max: 180 }
   },
   destinationAddress: {
     type: String,
@@ -83,8 +83,8 @@ const rideRequestSchema = new mongoose.Schema({
     trim: true
   },
   destinationCoordinates: {
-    lat: { type: Number, min: -90, max: 90 },
-    lng: { type: Number, min: -180, max: 180 }
+    lat: { type: Number, required: true, min: -90, max: 90 },
+    lng: { type: Number, required: true, min: -180, max: 180 }
   },
 
   // New GeoJSON fields
