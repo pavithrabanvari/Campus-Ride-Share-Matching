@@ -4,8 +4,13 @@
   "description": "",
   "main": "server.js",
   "scripts": {
+<<<<<<< HEAD
     "start": "node server.js",
     "test": "jest --detectOpenHandles"
+=======
+    "test": "node test-ride-geospatial.js && node test-ride-search-integration.js",
+    "test:geospatial": "node test-ride-search-integration.js"
+>>>>>>> main
   },
   "repository": {
     "type": "git",

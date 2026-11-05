@@ -1,3 +1,9 @@
+<<<<<<< HEAD
+=======
+const router = require('express').Router();
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+>>>>>>> main
 const jwt = require('jsonwebtoken');
 
 const authMiddleware = (req, res, next) => {
