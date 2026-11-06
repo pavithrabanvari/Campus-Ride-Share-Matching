@@ -1,7 +1,15 @@
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const { RideOffer, RideRequest } = require('../models/Ride');
 const jwt = require('jsonwebtoken');
 
+const rideWriteRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again later.' }
+});
 
 // Response-time monitoring for geospatial search (NFR-01)
 const monitorSearchResponseTime = (req, res, next) => {
@@ -38,7 +46,7 @@ const verifyToken = (req, res, next) => {
 };
 
 // Post a Ride Offer
-router.post('/offers', verifyToken, async (req, res) => {
+router.post('/offers', rideWriteRateLimit, verifyToken, async (req, res) => {
   try {
     const newOffer = new RideOffer({ ...req.body, driver: req.user.id });
     await newOffer.save();
@@ -49,7 +57,7 @@ router.post('/offers', verifyToken, async (req, res) => {
 });
 
 // Post a Ride Request
-router.post('/requests', verifyToken, async (req, res) => {
+router.post('/requests', rideWriteRateLimit, verifyToken, async (req, res) => {
   try {
     const newRequest = new RideRequest({ ...req.body, rider: req.user.id });
     await newRequest.save();
