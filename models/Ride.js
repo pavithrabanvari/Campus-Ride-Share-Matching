@@ -1,24 +1,43 @@
+
 const mongoose = require('mongoose');
 
-const RideSchema = new mongoose.Schema({
-  user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  type: { type: String, enum: ['OFFER', 'REQUEST'], required: true },
-  source: {
-    address: { type: String, required: true },
+// GeoJSON Point schema for MongoDB geospatial queries
+const geoPointSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ['Point'],
+      default: 'Point',
+      required: true
+    },
     coordinates: {
-      lat: { type: Number, required: true },
-      lng: { type: Number, required: true }
+      type: [Number],
+      required: true,
+      validate: {
+        validator: function (coords) {
+          return (
+            Array.isArray(coords) &&
+            coords.length === 2 &&
+            coords.every(Number.isFinite) &&
+            coords[0] >= -180 &&
+            coords[0] <= 180 &&
+            coords[1] >= -90 &&
+            coords[1] <= 90
+          );
+        },
+        message: 'Coordinates must be [longitude, latitude] within valid ranges'
+      }
     }
   },
-  destination: {
-    address: { type: String, required: true },
-    coordinates: {
-      lat: { type: Number, required: true },
-      lng: { type: Number, required: true }
-    }
+  { _id: false }
+);
+
+const rideOfferSchema = new mongoose.Schema({
+  driver: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
   },
-<<<<<<< HEAD
-=======
   originAddress: { type: String, required: true, trim: true },
   originCoordinates: {
     lat: { type: Number, required: true, min: -90, max: 90 },
@@ -38,16 +57,15 @@ const RideSchema = new mongoose.Schema({
   originLocation: { type: geoPointSchema },
   destinationLocation: { type: geoPointSchema },
 
->>>>>>> main
   departureTime: { type: Date, required: true },
-  seatsAvailable: { type: Number, required: function() { return this.type === 'OFFER'; } },
-  status: { type: String, enum: ['ACTIVE', 'CANCELLED', 'COMPLETED'], default: 'ACTIVE' },
-  createdAt: { type: Date, default: Date.now }
+  availableSeats: { type: Number, required: true, min: 1 },
+  status: {
+    type: String,
+    enum: ['ACTIVE', 'CANCELLED', 'COMPLETED'],
+    default: 'ACTIVE'
+  }
 });
 
-<<<<<<< HEAD
-module.exports = mongoose.model('Ride', RideSchema);
-=======
 const rideRequestSchema = new mongoose.Schema({
   rider: {
     type: mongoose.Schema.Types.ObjectId,
@@ -119,4 +137,3 @@ module.exports = {
   RideRequest: mongoose.model('RideRequest', rideRequestSchema)
 };
 
->>>>>>> main
