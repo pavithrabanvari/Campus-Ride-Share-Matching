@@ -33,6 +33,7 @@ function validPost(body, type) {
   }
   const date = new Date(type === 'offer' ? body.departureTime : body.desiredTime);
   if (!Number.isFinite(date.getTime())) return 'Provide a valid departure date and time.';
+  if (type === 'offer' && date <= new Date()) return 'Departure must be in the future.';
   const seats = Number(type === 'offer' ? body.availableSeats : body.seatsNeeded);
   if (!Number.isInteger(seats) || seats < 1 || seats > 20) return 'Seat count must be a whole number from 1 to 20.';
   return null;
@@ -51,13 +52,53 @@ router.post('/offers', rideWriteRateLimit, requireAuth, async (req, res) => {
   const error = validPost(req.body, 'offer');
   if (error) return res.status(400).json({ success: false, message: error });
   try {
-    const offer = await RideOffer.create({ ...req.body, driver: req.user.id });
+    const { driver: _ignoredDriver, user: _ignoredUser, host: _ignoredHost, ...input } = req.body;
+    const offer = await RideOffer.create({ ...input, driver: req.user.id, status: 'ACTIVE' });
     return res.status(201).json(offer);
   } catch (cause) {
     if (cause.name === 'ValidationError' || cause.name === 'CastError') {
       return res.status(400).json({ success: false, message: cause.message });
     }
     return res.status(500).json({ success: false, message: 'Unable to create ride offer.' });
+  }
+});
+
+router.get('/mine', requireAuth, async (req, res) => {
+  try {
+    const offers = await RideOffer.find({ driver: req.user.id }).sort({ departureTime: 1 }).lean();
+    return res.json({ success: true, offers });
+  } catch (cause) {
+    return res.status(500).json({ success: false, message: 'Unable to load your ride offers.' });
+  }
+});
+
+router.delete('/offers/:id', rideWriteRateLimit, requireAuth, async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ride offer id.' });
+  try {
+    const offer = await RideOffer.findById(req.params.id);
+    if (!offer) return res.status(404).json({ success: false, message: 'Ride offer not found.' });
+    if (String(offer.driver) !== req.user.id) return res.status(403).json({ success: false, message: 'You can only cancel your own ride offers.' });
+    offer.status = 'CANCELLED';
+    await offer.save();
+    return res.json({ success: true, offer });
+  } catch (cause) {
+    return res.status(500).json({ success: false, message: 'Unable to cancel ride offer.' });
+  }
+});
+
+router.post('/offers/:id/book', rideWriteRateLimit, requireAuth, async (req, res) => {
+  const seats = Number(req.body && req.body.seats || 1);
+  if (!Number.isInteger(seats) || seats < 1 || seats > 20) return res.status(400).json({ success: false, message: 'Request between 1 and 20 seats.' });
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: 'Invalid ride offer id.' });
+  try {
+    const existing = await RideOffer.findById(req.params.id).select('driver status');
+    if (!existing) return res.status(404).json({ success: false, message: 'Ride offer not found.' });
+    if (String(existing.driver) === req.user.id) return res.status(403).json({ success: false, message: 'You cannot request seats on your own ride.' });
+    const offer = await RideOffer.findOneAndUpdate({ _id: req.params.id, status: 'ACTIVE', availableSeats: { $gte: seats } }, { $inc: { availableSeats: -seats } }, { new: true, runValidators: true });
+    if (!offer) return res.status(409).json({ success: false, message: 'This ride is no longer available or has too few seats.' });
+    return res.json({ success: true, message: 'Seats reserved successfully.', offer });
+  } catch (cause) {
+    return res.status(500).json({ success: false, message: 'Unable to request seats right now.' });
   }
 });
 
@@ -85,10 +126,19 @@ router.patch('/offers/:id', rideWriteRateLimit, requireAuth, async (req, res) =>
     if (String(offer.driver) !== req.user.id) {
       return res.status(403).json({ success: false, message: 'You can only update your own ride offers.' });
     }
-    const allowed = new Set(['originAddress', 'originCoordinates', 'destinationAddress', 'destinationCoordinates', 'departureTime', 'availableSeats', 'vehicleDetails', 'status']);
+    const allowed = new Set(['originAddress', 'originCoordinates', 'destinationAddress', 'destinationCoordinates', 'departureTime', 'availableSeats', 'vehicleType', 'vehicleDetails', 'notes', 'status']);
     const updates = Object.keys(req.body || {});
     if (!updates.length || updates.some((field) => !allowed.has(field))) {
       return res.status(400).json({ success: false, message: 'The requested ride offer updates are invalid.' });
+    }
+    if (req.body.status !== undefined && !['CANCELLED', 'COMPLETED'].includes(req.body.status)) {
+      return res.status(400).json({ success: false, message: 'Ride status can only be changed to CANCELLED or COMPLETED.' });
+    }
+    if (req.body.departureTime !== undefined && (!Number.isFinite(new Date(req.body.departureTime).getTime()) || new Date(req.body.departureTime) <= new Date())) {
+      return res.status(400).json({ success: false, message: 'Departure must be in the future.' });
+    }
+    if (req.body.availableSeats !== undefined && (!Number.isInteger(Number(req.body.availableSeats)) || Number(req.body.availableSeats) < 1 || Number(req.body.availableSeats) > 20)) {
+      return res.status(400).json({ success: false, message: 'Seat count must be a whole number from 1 to 20.' });
     }
     for (const field of updates) offer[field] = req.body[field];
     await offer.save();

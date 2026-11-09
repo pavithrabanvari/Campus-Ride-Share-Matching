@@ -2,6 +2,8 @@ const $ = (id) => document.getElementById(id);
 const form = $("search-form");
 const grid = $("results-grid");
 let toastTimer;
+const authToken = () => localStorage.getItem("campusRideToken");
+const authHeaders = () => authToken() ? { Authorization: `Bearer ${authToken()}` } : {};
 
 function departureDate() {
   const [hours, minutes] = $('departure-time').value.split(':').map(Number);
@@ -39,7 +41,7 @@ function renderMatches(matches) {
     <article class="ride-card">
       <div class="ride-top"><div class="driver"><span class="driver-avatar" style="background:${["#eff2e9", "#f6ebe5", "#e9eef4", "#f4efdf"][index % 4]}">${escapeHtml(initials(match.driver_name))}</span><span class="driver-name">${escapeHtml(match.driver_name)}<small class="driver-label">Fellow student</small></span></div><span class="score">${Math.round(match.score)}% fit</span></div>
       <div class="ride-route"><div class="route-dots"><i></i><span></span><i></i></div><div><div class="route-stop">${escapeHtml(match.pickup)}</div><div class="route-stop">${escapeHtml(match.dropoff)}</div></div></div>
-      <div class="ride-meta"><span>◷ ${escapeHtml($('departure-time').value)}</span><span>↔ ${Math.round(match.time_delta_min)} min flex</span><span class="seat-icon">♧ ${match.available_seats} ${match.available_seats === 1 ? "seat" : "seats"}</span><button class="message-link" data-driver="${escapeHtml(match.driver_name)}" data-id="${escapeHtml(match.offer_id)}">Say hello ↗</button></div>
+      <div class="ride-meta"><span>◷ ${escapeHtml($('departure-time').value)}</span><span>↔ ${Math.round(match.time_delta_min)} min flex</span><span class="seat-icon">♧ ${match.available_seats} ${match.available_seats === 1 ? "seat" : "seats"}</span><button class="message-link" data-driver="${escapeHtml(match.driver_name)}" data-id="${escapeHtml(match.offer_id)}">Say hello ↗</button><button class="message-link book-ride" data-id="${escapeHtml(match.offer_id)}">Request seat</button></div>
     </article>`).join("");
 }
 
@@ -126,9 +128,63 @@ async function loadMessages() {
   }
 }
 
+async function loadMyRides() {
+  const list = $("my-rides-grid");
+  if (!authToken()) { list.innerHTML = '<div class="empty-state"><h3>Sign in to see your rides</h3></div>'; return; }
+  try {
+    const response = await fetch('/api/rides/mine', { headers: authHeaders() }); const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || 'Could not load your rides.');
+    list.innerHTML = payload.offers.length ? payload.offers.map((ride) => `<article class="ride-card"><span class="step-kicker">${escapeHtml(ride.status)}</span><h3>${escapeHtml(ride.originAddress)} → ${escapeHtml(ride.destinationAddress)}</h3><p>${new Date(ride.departureTime).toLocaleString()} · ${ride.availableSeats} seat(s) · ${escapeHtml(ride.vehicleType || 'Car')}</p><p>${escapeHtml(ride.vehicleDetails || '')} ${escapeHtml(ride.notes || '')}</p>${ride.status === 'ACTIVE' ? `<button class="message-link edit-ride" data-id="${ride._id}" data-origin="${escapeHtml(ride.originAddress)}" data-destination="${escapeHtml(ride.destinationAddress)}" data-seats="${ride.availableSeats}">Edit ride</button><button class="message-link cancel-ride" data-id="${ride._id}">Cancel ride</button>` : ''}</article>`).join('') : '<div class="empty-state"><h3>No rides offered yet</h3><p>Publish a ride and it will show up here.</p></div>';
+  } catch (error) { list.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`; }
+}
+
+async function authenticate() {
+  if (authToken()) { localStorage.removeItem('campusRideToken'); $('auth-button').textContent = 'Sign in'; loadMyRides(); showToast('Signed out.'); return; }
+  const email = prompt('Your campus email'); if (!email) return; const password = prompt('Password'); if (!password) return;
+  try {
+    let response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); let payload = await response.json();
+    if (!response.ok) { const name = prompt('No account signed in. Enter your name to create one, or cancel.'); if (!name) throw new Error(payload.message || 'Sign in failed.'); response = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password }) }); payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Registration failed.'); response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Sign in failed.'); }
+    localStorage.setItem('campusRideToken', payload.token); $('auth-button').textContent = 'Sign out'; loadMyRides(); showToast(`Welcome${payload.name ? `, ${payload.name}` : ''}!`);
+  } catch (error) { showToast(error.message); }
+}
+
+async function publishRide(event) {
+  event.preventDefault(); const errorBox = $('offer-error'); errorBox.hidden = true;
+  if (!authToken()) { showToast('Sign in before publishing a ride.'); authenticate(); return; }
+  const data = new FormData(event.currentTarget); const departureTime = new Date(`${data.get('date')}T${data.get('time')}`);
+  if (!Number.isFinite(departureTime.getTime()) || departureTime <= new Date()) { errorBox.textContent = 'Choose a departure date and time in the future.'; errorBox.hidden = false; return; }
+  const button = event.currentTarget.querySelector('button[type=submit]'); button.disabled = true; button.querySelector('span:first-child').textContent = 'Publishing…';
+  const body = { originAddress: data.get('originAddress'), originCoordinates: { lat: Number(data.get('originLat')), lng: Number(data.get('originLng')) }, destinationAddress: data.get('destinationAddress'), destinationCoordinates: { lat: Number(data.get('destinationLat')), lng: Number(data.get('destinationLng')) }, departureTime: departureTime.toISOString(), availableSeats: Number(data.get('availableSeats')), vehicleType: data.get('vehicleType'), vehicleDetails: data.get('vehicleDetails'), notes: data.get('notes') };
+  try { const response = await fetch('/api/rides/offers', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Ride could not be published.'); event.currentTarget.reset(); showToast('Your ride has been published.'); await loadMyRides(); }
+  catch (error) { errorBox.textContent = error.message; errorBox.hidden = false; }
+  finally { button.disabled = false; button.querySelector('span:first-child').textContent = 'Publish ride'; }
+}
+
+async function bookRide(id) {
+  if (!authToken()) { showToast('Sign in to request a seat.'); return authenticate(); }
+  try { const response = await fetch(`/api/rides/offers/${encodeURIComponent(id)}/book`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ seats: 1 }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Seat request failed.'); showToast(payload.message); form.requestSubmit(); }
+  catch (error) { showToast(error.message); }
+}
+
 form.addEventListener("submit", searchRides);
+$("offer-form").addEventListener('submit', publishRide);
+$('auth-button').addEventListener('click', authenticate);
+if (authToken()) { $('auth-button').textContent = 'Sign out'; loadMyRides(); }
+$("my-rides-grid").addEventListener('click', async (event) => {
+  const edit = event.target.closest('.edit-ride');
+  if (edit) {
+    const originAddress = prompt('Pickup location', edit.dataset.origin); if (originAddress === null) return;
+    const destinationAddress = prompt('Destination', edit.dataset.destination); if (destinationAddress === null) return;
+    const availableSeats = Number(prompt('Available seats', edit.dataset.seats)); if (!Number.isInteger(availableSeats) || availableSeats < 1 || availableSeats > 20) return showToast('Enter a whole number of seats from 1 to 20.');
+    try { const response = await fetch(`/api/rides/offers/${encodeURIComponent(edit.dataset.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ originAddress, destinationAddress, availableSeats }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Update failed.'); showToast('Ride updated.'); loadMyRides(); } catch (error) { showToast(error.message); }
+    return;
+  }
+  const button = event.target.closest('.cancel-ride'); if (!button || !confirm('Cancel this ride?')) return;
+  try { const response = await fetch(`/api/rides/offers/${encodeURIComponent(button.dataset.id)}`, { method: 'DELETE', headers: authHeaders() }); const payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Cancellation failed.'); showToast('Ride cancelled.'); loadMyRides(); } catch (error) { showToast(error.message); }
+});
+grid.addEventListener('click', (event) => { const button = event.target.closest('.book-ride'); if (button) bookRide(button.dataset.id); });
 grid.addEventListener("click", (event) => {
-  const button = event.target.closest(".message-link");
+  const button = event.target.closest(".message-link:not(.book-ride)");
   if (button) messageDriver(button.dataset.driver, button.dataset.id);
 });
 $("messages-link").addEventListener("click", (event) => { event.preventDefault(); loadMessages(); });

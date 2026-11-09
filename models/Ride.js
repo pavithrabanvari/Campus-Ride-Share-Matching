@@ -43,7 +43,9 @@ const rideOfferSchema = new mongoose.Schema({
   destinationLocation: { type: geoPointSchema, required: true },
   departureTime: { type: Date, required: true },
   availableSeats: { type: Number, required: true, min: 1 },
+  vehicleType: { type: String, trim: true, maxlength: 40, default: 'Car' },
   vehicleDetails: { type: String, trim: true, maxlength: 300 },
+  notes: { type: String, trim: true, maxlength: 1000 },
   status: { type: String, enum: ['ACTIVE', 'CANCELLED', 'COMPLETED'], default: 'ACTIVE' },
   createdAt: { type: Date, default: Date.now }
 });
