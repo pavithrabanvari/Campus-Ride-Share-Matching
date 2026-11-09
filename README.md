@@ -26,10 +26,12 @@ Open `http://localhost:5000`. The frontend searches active ride offers from Mong
 
 ## Main API routes
 
-- `POST /api/auth/register` and `POST /api/auth/login`
+- `POST /api/auth/register` and `POST /api/auth/login` (20 attempts per IP per minute)
 - `POST /api/rides/offers` and `POST /api/rides/requests` (Bearer token required)
-- `GET /api/rides/search?originLat=…&originLng=…` with optional destination and departure-time filters
+- `GET /api/rides/search?originLat=<lat>&originLng=<lng>` with optional destination and departure-time filters
 - `POST /api/matches/rank`
 - `POST /api/messages/send` and `GET /api/messages/:userId`
+
+Ride write routes are limited to 60 requests per IP per minute. The rate limits are in-memory and apply per application process. To run the standalone Python API, install FastAPI and Uvicorn, then use `python -m uvicorn main:app --reload`.
 
 Geospatial search details and the module's test evidence are in `docs/SRS_Geospatial_Update.md`, `docs/RTM_Geospatial_Update.md`, and `docs/STP_Geospatial_Update.md`.

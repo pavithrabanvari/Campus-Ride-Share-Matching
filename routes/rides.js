@@ -2,6 +2,9 @@ const router = require('express').Router();
 const mongoose = require('mongoose');
 const { RideOffer, RideRequest } = require('../models/Ride');
 const { requireAuth } = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rateLimit');
+
+const rideWriteRateLimit = rateLimit({ limit: 60, windowMs: 60_000, message: 'Too many ride updates. Please try again later.' });
 
 function validCoordinate(value, min, max) {
   if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return false;
@@ -44,7 +47,7 @@ function monitorSearchResponseTime(req, res, next) {
   next();
 }
 
-router.post('/offers', requireAuth, async (req, res) => {
+router.post('/offers', rideWriteRateLimit, requireAuth, async (req, res) => {
   const error = validPost(req.body, 'offer');
   if (error) return res.status(400).json({ success: false, message: error });
   try {
@@ -58,7 +61,7 @@ router.post('/offers', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/requests', requireAuth, async (req, res) => {
+router.post('/requests', rideWriteRateLimit, requireAuth, async (req, res) => {
   const error = validPost(req.body, 'request');
   if (error) return res.status(400).json({ success: false, message: error });
   try {
@@ -72,7 +75,7 @@ router.post('/requests', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/offers/:id', requireAuth, async (req, res) => {
+router.patch('/offers/:id', rideWriteRateLimit, requireAuth, async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid ride offer id.' });
   }

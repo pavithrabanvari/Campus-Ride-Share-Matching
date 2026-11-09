@@ -3,10 +3,12 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { jwtSecret } = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rateLimit');
 
 const nonEmpty = (value) => typeof value === 'string' && value.trim().length > 0;
+const authRateLimit = rateLimit({ limit: 20, windowMs: 60_000, message: 'Too many authentication attempts. Please try again later.' });
 
-router.post('/register', async (req, res) => {
+router.post('/register', authRateLimit, async (req, res) => {
   const { name, email, password } = req.body || {};
   if (![name, email, password].every(nonEmpty)) {
     return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
@@ -33,7 +35,7 @@ router.post('/register', async (req, res) => {
   }
 });
 
-router.post('/login', async (req, res) => {
+router.post('/login', authRateLimit, async (req, res) => {
   const { email, password } = req.body || {};
   if (!nonEmpty(email) || !nonEmpty(password)) {
     return res.status(400).json({ success: false, message: 'Email and password are required.' });
