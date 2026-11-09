@@ -191,13 +191,13 @@ async function submitAuth(event) {
 }
 
 async function publishRide(event) {
-  event.preventDefault(); const errorBox = $('offer-error'); errorBox.hidden = true;
+  event.preventDefault(); const offerForm = event.currentTarget; const errorBox = $('offer-error'); errorBox.hidden = true;
   if (!authToken()) { showToast('Sign in before publishing a ride.'); authenticate(); return; }
-  const data = new FormData(event.currentTarget); const departureTime = new Date(`${data.get('date')}T${data.get('time')}`);
+  const data = new FormData(offerForm); const departureTime = new Date(`${data.get('date')}T${data.get('time')}`);
   if (!Number.isFinite(departureTime.getTime()) || departureTime <= new Date()) { errorBox.textContent = 'Choose a departure date and time in the future.'; errorBox.hidden = false; return; }
-  const button = event.currentTarget.querySelector('button[type=submit]'); button.disabled = true; button.querySelector('span:first-child').textContent = 'Publishing…';
+  const button = offerForm.querySelector('button[type=submit]'); button.disabled = true; button.querySelector('span:first-child').textContent = 'Publishing…';
   const body = { originAddress: data.get('originAddress'), originCoordinates: { lat: Number(data.get('originLat')), lng: Number(data.get('originLng')) }, destinationAddress: data.get('destinationAddress'), destinationCoordinates: { lat: Number(data.get('destinationLat')), lng: Number(data.get('destinationLng')) }, departureTime: departureTime.toISOString(), availableSeats: Number(data.get('availableSeats')), vehicleType: data.get('vehicleType'), vehicleDetails: data.get('vehicleDetails'), notes: data.get('notes') };
-  try { const response = await fetch('/api/rides/offers', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Ride could not be published.'); event.currentTarget.reset(); showToast('Your ride has been published.'); await loadMyRides(); }
+  try { const response = await fetch('/api/rides/offers', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify(body) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Ride could not be published.'); offerForm.reset(); showToast('Your ride has been published.'); await loadMyRides(); }
   catch (error) { errorBox.textContent = error.message; errorBox.hidden = false; }
   finally { button.disabled = false; button.querySelector('span:first-child').textContent = 'Publish ride'; }
 }
