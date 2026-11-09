@@ -1,19 +1,13 @@
-const sampleOffers = [
-  { id: "offer-101", driver_name: "Aarav Nair", pickup_lat: 12.935, pickup_lon: 77.535, dropoff_lat: 12.972, dropoff_lon: 77.595, departure_time_min: 545, available_seats: 2, status: "active", pickup_name: "PES Main Gate", dropoff_name: "MG Road" },
-  { id: "offer-102", driver_name: "Mira Sharma", pickup_lat: 12.936, pickup_lon: 77.537, dropoff_lat: 12.97, dropoff_lon: 77.592, departure_time_min: 550, available_seats: 1, status: "active", pickup_name: "PES Electronic City", dropoff_name: "Brigade Road" },
-  { id: "offer-103", driver_name: "Rohan Iyer", pickup_lat: 12.93, pickup_lon: 77.53, dropoff_lat: 12.975, dropoff_lon: 77.6, departure_time_min: 535, available_seats: 3, status: "active", pickup_name: "Hosa Road Metro", dropoff_name: "MG Road" },
-  { id: "offer-104", driver_name: "Ananya Rao", pickup_lat: 12.934, pickup_lon: 77.536, dropoff_lat: 12.973, dropoff_lon: 77.596, departure_time_min: 545, available_seats: 0, status: "active", pickup_name: "PES Main Gate", dropoff_name: "MG Road" },
-  { id: "offer-105", driver_name: "Dev Kapoor", pickup_lat: 12.934, pickup_lon: 77.536, dropoff_lat: 12.973, dropoff_lon: 77.596, departure_time_min: 545, available_seats: 2, status: "cancelled", pickup_name: "PES Main Gate", dropoff_name: "MG Road" }
-];
-
 const $ = (id) => document.getElementById(id);
 const form = $("search-form");
 const grid = $("results-grid");
 let toastTimer;
 
-function minutesFromTime(value) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
+function departureDate() {
+  const [hours, minutes] = $('departure-time').value.split(':').map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  return date;
 }
 
 function initials(name) {
@@ -57,7 +51,7 @@ async function searchRides(event) {
   const request = {
     pickup_lat: number("pickup-lat"), pickup_lon: number("pickup-lon"),
     dropoff_lat: number("dropoff-lat"), dropoff_lon: number("dropoff-lon"),
-    desired_time_min: minutesFromTime($("departure-time").value)
+    desired_time_min: Math.floor(departureDate().getTime() / 60000)
   };
   if (Object.values(request).some((value) => !Number.isFinite(value)) || Math.abs(request.pickup_lat) > 90 || Math.abs(request.dropoff_lat) > 90 || Math.abs(request.pickup_lon) > 180 || Math.abs(request.dropoff_lon) > 180) {
     error.textContent = "Please check your coordinates. Latitude ranges from −90 to 90 and longitude from −180 to 180.";
@@ -68,12 +62,25 @@ async function searchRides(event) {
   button.disabled = true;
   button.querySelector("span:first-child").textContent = "Finding your way…";
   try {
+    const departure = departureDate();
+    const timeWindow = Number($("time-window").value);
+    const start = new Date(departure.getTime() - timeWindow * 60000);
+    const end = new Date(departure.getTime() + timeWindow * 60000);
+    const params = new URLSearchParams({
+      originLat: String(request.pickup_lat), originLng: String(request.pickup_lon),
+      destinationLat: String(request.dropoff_lat), destinationLng: String(request.dropoff_lon),
+      radiusKm: "5", departureFrom: start.toISOString(), departureTo: end.toISOString(),
+      desiredTime: departure.toISOString()
+    });
+    const searchResponse = await fetch(`/api/rides/search?${params}`);
+    const searchPayload = await searchResponse.json();
+    if (!searchResponse.ok) throw new Error(searchPayload.error || searchPayload.message || "Ride search failed.");
     const response = await fetch("/api/matches/rank", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ request, offers: sampleOffers, max_time_window_min: Number($("time-window").value) })
+      body: JSON.stringify({ request: searchPayload.request || request, offers: searchPayload.offers, max_time_window_min: timeWindow })
     });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "Something went wrong while finding rides.");
+    if (!response.ok) throw new Error(payload.detail || payload.message || "Something went wrong while finding rides.");
     renderMatches(payload.matches || []);
     $("results").scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (exception) {
@@ -94,7 +101,7 @@ async function messageDriver(driver, rideId) {
       body: JSON.stringify({ sender_id: "campus_rider", recipient_id: `driver_${rideId}`, content: content.trim() })
     });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "Message could not be sent.");
+    if (!response.ok) throw new Error(payload.detail || payload.message || "Message could not be sent.");
     $("message-count").textContent = String(Number($("message-count").textContent) + 1);
     showToast(`Your note to ${driver.split(" ")[0]} has been sent.`);
     loadMessages();
@@ -110,7 +117,7 @@ async function loadMessages() {
   try {
     const response = await fetch("/api/messages/campus_rider");
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || "Messages could not be loaded.");
+    if (!response.ok) throw new Error(payload.detail || payload.message || "Messages could not be loaded.");
     const messages = payload.messages || [];
     $("message-count").textContent = String(messages.length);
     list.innerHTML = messages.length ? messages.map((message) => `<article style="padding:12px;border:1px solid #e9ede8;border-radius:9px"><strong style="font-size:11px">${escapeHtml(message.sender_id === "campus_rider" ? `You → ${message.recipient_id.replace("driver_", "")}` : message.sender_id)}</strong><p style="margin:6px 0 0;color:#75827a;font-size:11px;line-height:1.5;overflow-wrap:anywhere">${escapeHtml(message.content)}</p></article>`).join("") : `<div style="padding:30px 10px;text-align:center;font-size:11px;color:#929c94">Your conversations will show up here.</div>`;

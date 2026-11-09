@@ -1,7 +1,7 @@
 {
   "name": "campus-ride-share-matching",
   "version": "1.0.0",
-  "description": "",
+  "description": "A platform where students post ride offers or requests with pickup/drop-off points and are matched based on route compatibility. The project implements geospatial query handling, matching heuristics, and notification via in-app messaging.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
