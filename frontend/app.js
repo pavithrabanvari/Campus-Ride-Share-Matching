@@ -138,14 +138,56 @@ async function loadMyRides() {
   } catch (error) { list.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`; }
 }
 
-async function authenticate() {
+let authMode = 'signin';
+function setAuthMode(mode) {
+  authMode = mode;
+  const signup = mode === 'signup';
+  $('auth-title').textContent = signup ? 'Create your account' : 'Welcome back';
+  $('auth-description').textContent = signup ? 'Join your campus community to share rides.' : 'Sign in to offer rides and request seats.';
+  $('auth-name-wrap').hidden = !signup;
+  $('auth-name').required = signup;
+  $('auth-password').autocomplete = signup ? 'new-password' : 'current-password';
+  $('auth-submit').querySelector('span:first-child').textContent = signup ? 'Create account' : 'Sign in';
+  $('auth-switch').textContent = signup ? 'Already have an account? Sign in' : 'New here? Create an account';
+  $('auth-error').hidden = true;
+}
+
+function authenticate() {
   if (authToken()) { localStorage.removeItem('campusRideToken'); $('auth-button').textContent = 'Sign in'; loadMyRides(); showToast('Signed out.'); return; }
-  const email = prompt('Your campus email'); if (!email) return; const password = prompt('Password'); if (!password) return;
+  setAuthMode('signin');
+  $('auth-form').reset();
+  $('auth-dialog').showModal();
+  $('auth-email').focus();
+}
+
+async function submitAuth(event) {
+  event.preventDefault();
+  const formData = new FormData(event.currentTarget);
+  const errorBox = $('auth-error'); errorBox.hidden = true;
+  const button = $('auth-submit'); button.disabled = true;
+  button.querySelector('span:first-child').textContent = authMode === 'signup' ? 'Creating account…' : 'Signing in…';
   try {
-    let response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); let payload = await response.json();
-    if (!response.ok) { const name = prompt('No account signed in. Enter your name to create one, or cancel.'); if (!name) throw new Error(payload.message || 'Sign in failed.'); response = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, email, password }) }); payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Registration failed.'); response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); payload = await response.json(); if (!response.ok) throw new Error(payload.message || 'Sign in failed.'); }
-    localStorage.setItem('campusRideToken', payload.token); $('auth-button').textContent = 'Sign out'; loadMyRides(); showToast(`Welcome${payload.name ? `, ${payload.name}` : ''}!`);
-  } catch (error) { showToast(error.message); }
+    const endpoint = authMode === 'signup' ? '/api/auth/register' : '/api/auth/login';
+    let response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: formData.get('name'), email: formData.get('email'), password: formData.get('password') }) });
+    let payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || (authMode === 'signup' ? 'Account creation failed.' : 'Sign in failed.'));
+    if (authMode === 'signup') {
+      response = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: formData.get('email'), password: formData.get('password') }) });
+      payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Account created, but sign in failed. Please sign in.');
+    }
+    localStorage.setItem('campusRideToken', payload.token);
+    $('auth-button').textContent = 'Sign out';
+    $('auth-dialog').close();
+    await loadMyRides();
+    showToast(`Welcome${payload.name ? `, ${payload.name}` : ''}!`);
+  } catch (error) {
+    errorBox.textContent = error.message;
+    errorBox.hidden = false;
+  } finally {
+    button.disabled = false;
+    button.querySelector('span:first-child').textContent = authMode === 'signup' ? 'Create account' : 'Sign in';
+  }
 }
 
 async function publishRide(event) {
@@ -169,6 +211,9 @@ async function bookRide(id) {
 form.addEventListener("submit", searchRides);
 $("offer-form").addEventListener('submit', publishRide);
 $('auth-button').addEventListener('click', authenticate);
+$('auth-switch').addEventListener('click', () => setAuthMode(authMode === 'signin' ? 'signup' : 'signin'));
+$('auth-close').addEventListener('click', () => $('auth-dialog').close());
+$('auth-form').addEventListener('submit', submitAuth);
 if (authToken()) { $('auth-button').textContent = 'Sign out'; loadMyRides(); }
 $("my-rides-grid").addEventListener('click', async (event) => {
   const edit = event.target.closest('.edit-ride');
