@@ -1,91 +1,37 @@
-Campus Ride-Share Matching Platform 🚗🎓
-An intelligent, full-stack campus ride-sharing platform designed for university students to share daily commutes, reduce travel costs, and optimize campus transit efficiency.
+# Campus Ride-Share Matching
 
-The system leverages geospatial indexing, custom heuristic scoring algorithms, real-time FastAPI endpoints, and modular subsystem integrations to pair ride seekers with compatible peer drivers based on proximity, drop-off routes, seat availability, and departure time windows.
+> A platform where students post ride offers or requests with pickup/drop-off points and are matched based on route compatibility. The project implements geospatial query handling, matching heuristics, and notification via in-app messaging.
 
-🛠 Tech Stack & Architecture
-Backend Framework: FastAPI (Python 3.13) / Node.js & Express
+## Application layout
 
-Matching Engine: Custom geospatial Haversine distance calculator, dynamic weighted constraint scoring, and departure time delta window filters
+- `frontend/` contains the student web interface.
+- `server.js` is the main Express application. It serves the frontend and mounts the API routes.
+- `routes/rides.js` and `models/Ride.js` provide ride creation and MongoDB geospatial search.
+- `routes/matching.js` ranks search candidates using pickup distance, destination distance, departure-time difference, and seat/status filters.
+- `routes/messaging.js` provides prototype in-app messaging. Messages are currently held in process memory and reset when the server restarts.
+- `routes/auth.js` and `middleware/auth.js` provide registration, sign-in, and JWT-protected ride creation.
+- `main.py`, `routes/matching.py`, and `matching_engine/` retain the standalone FastAPI matching API and Python scoring implementation for development and comparison. The browser application uses the Express API.
 
-Testing Suite: Python unittest & pytest
+## Run locally
 
-Version Control & Management: Git, GitHub Flow, Jira Agile Sprints
+Requirements: Node.js, MongoDB, and npm dependencies installed with `npm install`.
 
-🎯 Key Features & Requirements
-FR-12 & FR-13 (Route Matching & Compatibility Ranking): Computes real-time compatibility scores (0–100) by evaluating pickup proximity, destination drop-off distance, and departure time discrepancies.
+Set `MONGO_URI` to your MongoDB connection string. Set `JWT_SECRET` to a private random value for a stable development session. Then run:
 
-FR-15 & TC-07 (Seat & Status Filtering): Automatically excludes cancelled ride offers or vehicles with 0 available seats.
+```sh
+npm start
+```
 
-Dynamic Time Window Thresholds: Disqualifies candidate offers exceeding maximum departure tolerance windows (e.g., >30 minutes) to ensure tight schedules.
+Open `http://localhost:5000`. The frontend searches active ride offers from MongoDB and submits the results to the matching API. To create ride posts, sign in through `/api/auth/register` or `/api/auth/login` and send a Bearer token to the protected ride endpoints.
 
-Clean Empty-State Handling: Seamlessly handles empty matching results ([]) when no valid offers meet safety and proximity constraints.
+## Main API routes
 
+- `POST /api/auth/register` and `POST /api/auth/login` (20 attempts per IP per minute)
+- `POST /api/rides/offers` and `POST /api/rides/requests` (Bearer token required)
+- `GET /api/rides/search?originLat=<lat>&originLng=<lng>` with optional destination and departure-time filters
+- `POST /api/matches/rank`
+- `POST /api/messages/send` and `GET /api/messages/:userId`
 
-🚀 Getting Started Locally
+Ride write routes are limited to 60 requests per IP per minute. The rate limits are in-memory and apply per application process. To run the standalone Python API, install FastAPI and Uvicorn, then use `python -m uvicorn main:app --reload`.
 
-1. Clone the Repository
-git clone https://github.com/pavithrabanvari/Campus-Ride-Share-Matching.git
-cd Campus-Ride-Share-Matching
-
-2. Set Up Virtual Environment & Dependencies
-Create virtual environment
-python -m venv venv
-
-Activate virtual environment (Windows PowerShell)
-.\venv\Scripts\Activate.ps1
-
-Activate virtual environment (macOS/Linux)
-source venv/bin/activate
-
-Install required dependencies
-pip install fastapi uvicorn pytest
-
-3. Run the Development Server
-python -m uvicorn main:app --reload
-
-The FastAPI backend server will start at http://127.0.0.1:8000.
-
-🧪 Interactive API Documentation & Testing
-Interactive Swagger UI
-Once the server is running, open your browser and navigate to:
-
-Swagger Documentation: http://127.0.0.1:8000/docs
-
-ReDoc: http://127.0.0.1:8000/redoc
-
-Test Endpoint Example
-POST /api/matches/rank
-
-Sample Request Payload:
-{
-"request": {
-"pickup_lat": 12.9344,
-"pickup_lon": 77.5345,
-"dropoff_lat": 12.9716,
-"dropoff_lon": 77.5946,
-"desired_time_min": 540
-},
-"offers": [
-{
-"id": "offer-101",
-"driver_name": "Alice",
-"pickup_lat": 12.9350,
-"pickup_lon": 77.5350,
-"dropoff_lat": 12.9720,
-"dropoff_lon": 77.5950,
-"departure_time_min": 545,
-"available_seats": 3,
-"status": "active",
-"pickup_name": "PES Main Gate",
-"dropoff_name": "MG Road"
-}
-]
-}
-
-Running the Test Suite
-Execute unit tests for the heuristic scoring engine:
-python -m matching_engine.test_scorer
-
-Alternatively, run with pytest:
-python -m pytest
+Geospatial search details and the module's test evidence are in `docs/SRS_Geospatial_Update.md`, `docs/RTM_Geospatial_Update.md`, and `docs/STP_Geospatial_Update.md`.

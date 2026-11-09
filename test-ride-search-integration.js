@@ -45,7 +45,7 @@ async function main() {
       reject(new Error(`Server exited with code ${code} before listening: ${serverOutput}`));
     });
     const checkReady = () => {
-      if (serverOutput.includes(`Server running on port ${port}`)) {
+      if (serverOutput.includes(`Campus Ride Share running at http://localhost:${port}`)) {
         clearTimeout(timeout);
         resolve();
       }
@@ -65,7 +65,7 @@ async function main() {
     };
 
     const createAccount = async (name) => {
-      const email = `khushi.geo.${name.toLowerCase()}.${Date.now()}-${Math.random().toString(16).slice(2)}@pes.edu`;
+      const email = `khushi.geo.${name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}.${Date.now()}-${Math.random().toString(16).slice(2)}@pes.edu`;
       const registration = await api('/api/auth/register', {
         method: 'POST', body: JSON.stringify({ name, email, password: 'test-password' })
       });
@@ -119,6 +119,31 @@ async function main() {
     });
     assert.equal(offer.status, 201);
     assert.deepEqual(offer.body.originLocation.coordinates, [origin.lng, origin.lat]);
+    assert.equal(offer.body.status, 'ACTIVE');
+    assert.equal((await api('/api/rides/offers', {
+      method: 'POST', headers: driverAuth,
+      body: JSON.stringify({ originAddress: 'Past', originCoordinates: origin, destinationAddress: 'Destination', destinationCoordinates: destination, departureTime: new Date(Date.now() - 60000), availableSeats: 1 })
+    })).status, 400, 'Past departures should be rejected');
+
+    const mine = await api('/api/rides/mine', { headers: driverAuth });
+    assert.equal(mine.status, 200);
+    assert.ok(mine.body.offers.some((item) => String(item._id) === String(offer.body._id)));
+    assert.equal((await api('/api/rides/mine')).status, 401, 'Ride dashboard must require authentication');
+    assert.equal((await api(`/api/rides/offers/${offer.body._id}/book`, {
+      method: 'POST', headers: driverAuth, body: JSON.stringify({ seats: 1 })
+    })).status, 403, 'A driver cannot book their own ride');
+    assert.equal((await api(`/api/rides/offers/${offer.body._id}`, { method: 'DELETE', headers: riderAuth })).status, 403,
+      'Only the ride owner can cancel an offer');
+    assert.equal((await api(`/api/rides/offers/${offer.body._id}`, { method: 'PATCH', headers: riderAuth, body: JSON.stringify({ availableSeats: 5 }) })).status, 403,
+      'Only the ride owner can edit an offer');
+    const booking = await api(`/api/rides/offers/${offer.body._id}/book`, {
+      method: 'POST', headers: riderAuth, body: JSON.stringify({ seats: 1 })
+    });
+    assert.equal(booking.status, 200);
+    assert.equal(booking.body.offer.availableSeats, 1, 'Seat reservation should decrement availability');
+    assert.equal((await api(`/api/rides/offers/${offer.body._id}/book`, {
+      method: 'POST', headers: riderAuth, body: JSON.stringify({ seats: 2 })
+    })).status, 409, 'A rider cannot reserve more seats than remain');
 
     // Approximately 0.99 km from origin: inside the 1 km search boundary.
     const boundaryOffer = await api('/api/rides/offers', {
@@ -216,6 +241,10 @@ async function main() {
     assert.equal(ranker.status, 0, `Matching engine rejected the search payload: ${ranker.stderr}`);
     const ranked = JSON.parse(ranker.stdout.trim());
     assert.equal(ranked.count, 2, 'Matching engine should score the search results');
+    assert.equal((await api(`/api/rides/offers/${offer.body._id}`, { method: 'DELETE', headers: driverAuth })).status, 200);
+    assert.equal((await api(`/api/rides/offers/${offer.body._id}/book`, {
+      method: 'POST', headers: riderAuth, body: JSON.stringify({ seats: 1 })
+    })).status, 409, 'Cancelled offers cannot receive bookings');
 
     // Exercise the indexed query with a representative local load after the
     // authenticated offer/request integration checks have passed.
@@ -253,6 +282,8 @@ async function main() {
         separateDriverAndRiderAccounts: 'PASS',
         authenticatedOfferPost: 'PASS',
         authenticatedRequestPost: 'PASS',
+        ownerRideDashboardAndAuthorization: 'PASS',
+        seatReservationAndCancellation: 'PASS',
         coordinateValidation: 'PASS',
         nullAndExtremeInputHandling: 'PASS',
         emptyResults: 'PASS',

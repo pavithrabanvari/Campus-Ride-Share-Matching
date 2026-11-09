@@ -1,26 +1,55 @@
-<<<<<<< HEAD
-=======
 const router = require('express').Router();
-const User = require('../models/User');
 const bcrypt = require('bcryptjs');
->>>>>>> main
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const { jwtSecret } = require('../middleware/auth');
+const { rateLimit } = require('../middleware/rateLimit');
 
-const authMiddleware = (req, res, next) => {
-    const authHeader = req.header('Authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+const nonEmpty = (value) => typeof value === 'string' && value.trim().length > 0;
+const authRateLimit = rateLimit({ limit: 20, windowMs: 60_000, message: 'Too many authentication attempts. Please try again later.' });
+
+router.post('/register', authRateLimit, async (req, res) => {
+  const { name, email, password } = req.body || {};
+  if (![name, email, password].every(nonEmpty)) {
+    return res.status(400).json({ success: false, message: 'Name, email, and password are required.' });
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) || password.length < 8) {
+    return res.status(400).json({ success: false, message: 'Enter a valid email and a password of at least 8 characters.' });
+  }
+  try {
+    const user = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: await bcrypt.hash(password, 12)
+    });
+    return res.status(201).json({ success: true, message: 'User registered successfully', userId: String(user._id) });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'An account with that email already exists.' });
     }
-
-    try {
-        const token = authHeader.replace('Bearer ', '');
-        const verified = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = verified; // Attach user payload (id, role, etc.) to request object
-        next();
-    } catch (err) {
-        return res.status(403).json({ success: false, message: 'Invalid or expired token.' });
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ success: false, message: error.message });
     }
-};
+    return res.status(500).json({ success: false, message: 'Unable to register this account.' });
+  }
+});
 
-module.exports = authMiddleware; // Changed from export default to module.exports
+router.post('/login', authRateLimit, async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!nonEmpty(email) || !nonEmpty(password)) {
+    return res.status(400).json({ success: false, message: 'Email and password are required.' });
+  }
+  try {
+    const user = await User.findOne({ email: email.trim().toLowerCase() });
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    }
+    const token = jwt.sign({ id: String(user._id) }, jwtSecret, { expiresIn: '1d' });
+    return res.json({ success: true, token, userId: String(user._id), name: user.name });
+  } catch {
+    return res.status(500).json({ success: false, message: 'Unable to sign in right now.' });
+  }
+});
+
+module.exports = router;
